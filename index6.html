@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>情绪镜像：无视频沉浸版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+        
+        #ui-layer {
+            position: absolute; z-index: 100; top: 20px; left: 20px;
+            background: rgba(255, 255, 255, 0); padding: 18px; border-radius: 16px;
+            color: white; width: 280px; text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        /* ========================================== */
+        /* 【核心修改】：在视觉上彻底隐藏视频容器，但保留 DOM 供 AI 读取 */
+        /* ========================================== */
+        .video-wrapper { 
+            position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; z-index: -999;
+        }
+        
+        video#webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        canvas#landmarks { width: 100%; height: 100%; transform: scaleX(-1); }
+        
+        /* 放大并美化实时文字提示框，使其成为UI焦点 */
+        #realtime-emotion {
+            background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white; padding: 20px 12px; border-radius: 12px; font-weight: 300; font-size: 16px; 
+            margin-bottom: 12px; transition: all 0.3s; line-height: 1.6; letter-spacing: 1px;
+        }
+        .sub-desc { font-size: 12px; font-weight: normal; color: rgba(255,255,255,0.7); display: block; margin-top: 6px; }
+        
+        .big-text { font-size: 38px; font-weight: 300; color: #fff; margin: 10px 0; text-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        
+        .btn {
+            padding: 14px 22px; font-size: 14px; margin: 6px 0; border: none; border-radius: 30px; cursor: pointer; font-weight: 300; transition: all 0.3s ease; width: 100%; box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.1); color: white;
+            backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.15); letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15); }
+
+        #center-start {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; font-size: 20px; padding: 20px 40px; width: auto;
+            background: rgba(255, 255, 255, 0); border-color: rgba(255, 255, 255, 0);
+            backdrop-filter: blur(10px); color: #ffffff; box-shadow: 0 0 25px rgba(255, 255, 255, 0.064);
+            white-space: nowrap; transition: opacity 1s ease, transform 1s ease;
+        }
+        #center-start:hover { box-shadow: 0 0 50px rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.3); }
+        
+        #action-panel { display: none; margin-top: 15px; flex-direction: column; align-items: center; width: 100%;}
+        #btn-save-immersive { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.1); }
+        #subtitle-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 150; color: rgba(255, 255, 255, 0.9); font-size: 24px; letter-spacing: 4px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); opacity: 0; transition: opacity 1s ease-in-out; pointer-events: none; text-align: center; font-weight: 300; width: 90%; }
+
+        .smile-detected { border-color: rgba(227, 180, 72, 0.6) !important; background: rgba(227, 180, 72, 0.15) !important; }
+
+        .a-enter-vr-button {
+            background-color: rgba(255, 255, 255, 0.1) !important; background-image: none !important;
+            border: 1px solid rgba(255, 255, 255, 0.1) !important; backdrop-filter: blur(10px) !important;
+            -webkit-backdrop-filter: blur(10px) !important; border-radius: 50% !important;
+            width: 50px !important; height: 50px !important; right: 20px !important; bottom: 20px !important;
+            display: flex !important; align-items: center !important; justify-content: center !important;
+        }
+        .a-enter-vr-button::after { content: "VR"; color: white; font-size: 14px; font-weight: bold; }
+
+        @media (max-width: 600px) {
+            #ui-layer { left: 50%; transform: translateX(-50%); width: 90%; max-width: 360px; top: 15px; padding: 20px 16px; }
+            .btn { padding: 12px 20px; font-size: 14px; }
+            #subtitle-box { font-size: 16px; letter-spacing: 2px; }
+            #center-start { font-size: 18px; padding: 16px 32px; }
+            #realtime-emotion { padding: 16px 12px; font-size: 15px; margin-bottom: 12px; }
+            .big-text { font-size: 36px; margin: 8px 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <button id="center-start" class="btn">開啟情緒鏡像</button>
+
+    <div id="subtitle-box"></div>
+
+    <div id="ui-layer" style="display: none;">
+        <!-- 视频容器视觉隐藏，功能保留 -->
+        <div class="video-wrapper">
+            <video id="webcam" autoplay muted playsinline></video>
+            <canvas id="landmarks"></canvas>
+        </div>
+        
+        <!-- 核心文字交互区 -->
+        <div id="realtime-emotion">等待面部識別</div>
+        
+        <div id="stage-info" style="font-size: 13px; color: rgba(255,255,255,0.7);">沉思采集中</div>
+        <div id="timer-box" class="big-text">8</div>
+        
+        <div id="action-panel">
+            <button id="btn-save" class="btn">保存我的情緒</button>
+            <button id="btn-continue" class="btn">開啟微笑共鳴</button>
+            <button id="btn-save-immersive" class="btn">留存共鳴瞬间</button>
+            <button id="btn-reset" class="btn">返回主頁</button>
+        </div>
+    </div>
+
+    <audio id="bgm-capture" crossorigin="anonymous"><source src="Navigation Voice 1.MP3" type="audio/mpeg"></audio>
+    <audio id="bgm-totem" crossorigin="anonymous"><source src="immersive_music.mp3" type="audio/mpeg"></audio>
+    <audio id="bgm-immersive" loop crossorigin="anonymous"><source src="Navigation Voice 2.MP3" type="audio/mpeg"></audio>
+    
+    <audio id="audio-recognition" crossorigin="anonymous"><source src="recognition_hint.mp3" type="audio/mpeg"></audio>
+    <audio id="audio-interaction" crossorigin="anonymous"><source src="interaction_hint.mp3" type="audio/mpeg"></audio>
+
+    <a-scene renderer="preserveDrawingBuffer: true; antialias: true">
+        <a-sky id="galaxy" radius="50" hd-kaleidoscope-sky visible="true" rotation="0 -90 0"></a-sky>
+        <a-camera position="0 0 0" look-controls="pointerLockEnabled: false"></a-camera>
+    </a-scene>
+
+    <script>
+        AFRAME.registerComponent('hd-kaleidoscope-sky', {
+            init: function () {
+                this.targetColor = new THREE.Color(0x9CBB89);
+                this.targetThickness = 0.012;  
+                this.targetDistortion = 1.2;  
+                
+                this.uniforms = {
+                    u_time: { value: 0.0 }, u_color: { value: new THREE.Color(0x9CBB89) },
+                    u_smile: { value: 0.0 }, u_zoom: { value: 2.2 }, 
+                    u_petals: { value: 14.0 }, u_seed: { value: Math.random() * 100.0 },
+                    u_thickness: { value: 0.012 }, u_distortion: { value: 1.2 }
+                };
+
+                const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+                const fragmentShader = `
+                    varying vec2 vUv; uniform float u_time; uniform vec3 u_color; uniform float u_smile;
+                    uniform float u_zoom; uniform float u_petals; uniform float u_seed; uniform float u_thickness; uniform float u_distortion;
+                    #define PI 3.14159265359
+                    void main() {
+                        vec2 original_uv = (vUv - 0.5) * 2.0; float original_r = length(original_uv); vec2 uv = original_uv * u_zoom;
+                        float thump = 1.0 - u_smile * 0.05 * sin(u_time * 5.0); uv *= thump;
+                        float r = length(uv); float a = atan(uv.y, uv.x); a += u_seed * 0.1;
+                        float slice = PI * 2.0 / u_petals; a = mod(a, slice); a = abs(a - slice / 2.0);
+                        vec2 p = r * vec2(cos(a), sin(a)); float scale = 3.5 - u_smile * 1.8; p *= scale;
+                        vec2 flow = p;
+                        for(float i = 1.0; i < 25.0; i++) {
+                            float speedFactor = 0.8 + i * 0.05;
+                            flow.x += 0.3 / i * sin(i * (u_distortion + 4.0 + sin(u_time * 0.1 + u_seed)) * flow.y + u_time * speedFactor + u_seed * i);
+                            flow.y += 0.3 / i * cos(i * (u_distortion + cos(u_time * 1.2 + u_seed)) * flow.x + u_time * speedFactor + u_seed * i);
+                            float angle = u_time * 0.02; flow = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * flow;
+                        }
+                        float pattern = cos(flow.x * 5.0 + flow.y * 5.0);
+                        float thickness = mix(u_thickness, u_thickness * 1.5, u_smile);
+                        float glow = thickness / abs(pattern + 0.008);
+                        vec3 liuliSpectrum = 0.5 + 0.5 * cos(u_time * 0.5 + r * 3.0 + flow.x * 0.3 + vec3(0.0, 1.0, 2.0));
+                        vec3 finalColor = mix(u_color, liuliSpectrum, u_smile * 0.85);
+                        vec3 col = finalColor * glow * (2.2 + u_smile * 2.5) + vec3(1.0) * pow(glow, 1.8) * 0.6 * (1.0 + u_smile);
+                        col *= smoothstep(mix(1.2, 0.4, (u_zoom - 1.0)/2.5), mix(1.2, 0.4, (u_zoom - 1.0)/2.5) - 0.15, original_r);
+                        gl_FragColor = vec4(col, 1.0);
+                    }
+                `;
+                this.material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
+                this.el.getObject3D('mesh').material = this.material;
+               
+                this.isAnimating = true; this.timeScale = 0.15; this.targetSmile = 0.0; this.targetZoom = 2.2;
+            },
+            tick: function (time, dt) {
+                if (!this.isAnimating) return;
+                const delta = (dt / 1000) * this.timeScale;
+                this.uniforms.u_time.value += delta;
+               
+                const currentSmile = this.uniforms.u_smile.value;
+                this.uniforms.u_smile.value += (this.targetSmile - currentSmile) * (dt/1000) * (this.targetSmile > currentSmile ? 6.0 : 0.8);
+                this.uniforms.u_zoom.value += (this.targetZoom - this.uniforms.u_zoom.value) * (dt/1000) * 1.5;
+                this.uniforms.u_color.value.lerp(this.targetColor, (dt/1000) * 2.5);
+                this.uniforms.u_thickness.value += (this.targetThickness - this.uniforms.u_thickness.value) * (dt/1000) * 2.0;
+                this.uniforms.u_distortion.value += (this.targetDistortion - this.uniforms.u_distortion.value) * (dt/1000) * 2.0;
+            }
+        });
+
+        const plutchikMap = {
+            happy: { color: '#E3B448', petals: 16, thickness: 0.025, distortion: 1.0, name: '喜悅' }, 
+            sad: { color: '#2A5CAA', petals: 8,  thickness: 0.006, distortion: 0.4, name: '悲傷' }, 
+            angry: { color: '#FF461F', petals: 24, thickness: 0.015, distortion: 3.5, name: '憤怒' }, 
+            fearful: { color: '#1D6953', petals: 10, thickness: 0.005, distortion: 4.5, name: '恐懼' }, 
+            surprised: { color: '#4CB4E7', petals: 18, thickness: 0.018, distortion: 2.0, name: '驚奇' }, 
+            disgusted: { color: '#6B4C9A', petals: 12, thickness: 0.012, distortion: 2.5, name: '厭惡' }, 
+            neutral: { color: '#9CBB89', petals: 14, thickness: 0.012, distortion: 1.2, name: '平靜' }  
+        };
+
+        const startBtn = document.getElementById('center-start');
+        const uiLayer = document.getElementById('ui-layer');
+        const timerBox = document.getElementById('timer-box');
+        const emotionText = document.getElementById('realtime-emotion');
+        const galaxy = document.getElementById('galaxy');
+        const subtitleBox = document.getElementById('subtitle-box');
+       
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('landmarks');
+        const actionPanel = document.getElementById('action-panel');
+        const btnReset = document.getElementById('btn-reset');
+        const btnSaveImmersive = document.getElementById('btn-save-immersive');
+       
+        const bgmCapture = document.getElementById('bgm-capture');
+        const bgmTotem = document.getElementById('bgm-totem');
+        const bgmImmersive = document.getElementById('bgm-immersive');
+
+        let isCapturing = false, isInteracting = false, currentUIState = '', uiState = 'normal', subtitleTimers = [], bufferedSmileTracker = 0.0, collectedSamples = [];
+        
+        btnReset.onclick = resetApp;
+        
+        startBtn.onclick = async () => {
+            startBtn.style.opacity = '0';
+            setTimeout(() => { startBtn.style.display = 'none'; }, 1000);
+            
+            uiLayer.style.display = 'block';
+            setTimeout(() => { uiLayer.style.opacity = '1'; }, 100);
+           
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            if(comp) { comp.timeScale = 1.0; comp.targetZoom = 4.5; }
+
+            setTimeout(() => { bgmCapture.play().catch(e => console.log(e)); }, 2000);
+            setTimeout(() => { 
+                const audioRec = document.getElementById('audio-recognition');
+                if(audioRec) audioRec.play().catch(e => console.log(e)); 
+            }, 2000);
+
+            await initFaceAPI();
+        };
+
+        async function initFaceAPI() {
+            try {
+                emotionText.innerText = "正在啟動AI模型";
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+                video.srcObject = stream;
+                await new Promise((resolve) => { video.onloadedmetadata = () => { video.play().then(resolve); }; });
+                const URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(URL), faceapi.nets.faceExpressionNet.loadFromUri(URL), faceapi.nets.faceLandmark68Net.loadFromUri(URL)]);
+                emotionText.innerText = "情緒感知就緒，請正對鏡頭";
+                const displaySize = { width: video.videoWidth || 640, height: video.videoHeight || 480 };
+                faceapi.matchDimensions(canvas, displaySize);
+                setTimeout(() => startPhase1(displaySize), 500);
+            } catch (e) {
+                emotionText.innerText = "❌ 感知建立失败"; emotionText.style.color = "#FF461F";
+            }
+        }
+
+        function startPhase1(displaySize) {
+            document.getElementById('stage-info').style.display = "block"; timerBox.style.display = "block";
+            let count = 8; timerBox.innerText = count; collectedSamples = []; isCapturing = true;
+           
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            if(comp) { comp.targetColor.set('#9CBB89'); comp.targetZoom = 4.5; }
+
+            subtitleBox.style.opacity = 1; subtitleBox.innerText = "「 請使用您的面部表情，嘗試表達當下的情緒狀態 」";
+            subtitleTimers.push(setTimeout(() => { subtitleBox.style.opacity = 0; setTimeout(() => { subtitleBox.innerText = "「 請保持情緒狀態，正在凝結專屬圖騰...  」"; subtitleBox.style.opacity = 1; }, 500); }, 5000));
+
+            async function captureLoop() {
+                if(!isCapturing) return;
+                const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions();
+                const ctx = canvas.getContext('2d'); ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if(det) {
+                    const resizedDet = faceapi.resizeResults(det, displaySize);
+                    const topEmo = Object.keys(det.expressions).reduce((a,b)=>det.expressions[a]>det.expressions[b]?a:b);
+                    const emoData = plutchikMap[topEmo] || plutchikMap.neutral;
+                    faceapi.draw.drawFaceLandmarks(canvas, resizedDet, { drawLines: true, color: emoData.color, lineWidth: 1 });
+                    
+                    if (count <= 3) {
+                        emotionText.innerText = `正在凝結情緒: ${emoData.name}`; 
+                        emotionText.style.borderColor = emoData.color; 
+                        emotionText.style.color = emoData.color;
+                        collectedSamples.push(topEmo);
+                    } else {
+                        emotionText.innerText = `正在識別情緒: ${emoData.name}`; 
+                        emotionText.style.borderColor = "rgba(255, 255, 255, 0.3)"; 
+                        emotionText.style.color = "white";
+                    }
+                }
+                if(isCapturing) setTimeout(captureLoop, 100);
+            }
+            captureLoop();
+
+            let timer = setInterval(() => {
+                count--; timerBox.innerText = count;
+                if(count <= 0) { 
+                    clearInterval(timer); isCapturing = false; 
+                    let finalEmotion = 'neutral';
+                    if(collectedSamples.length > 0) {
+                        const counts = {};
+                        collectedSamples.forEach(x => counts[x] = (counts[x] || 0) + 1);
+                        finalEmotion = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+                    }
+                    startPhase2(finalEmotion); 
+                    ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                }
+            }, 1000);
+        }
+
+        function startPhase2(emotionKey) {
+            timerBox.style.display = 'none'; document.getElementById('stage-info').style.display = 'none'; subtitleBox.style.opacity = 0;
+            const data = plutchikMap[emotionKey] || plutchikMap.neutral;
+            emotionText.innerHTML = `基调：<span style="color:${data.color}">${data.name}</span><span class="sub-desc">为您生成专属的图腾镜像，线条由情绪维度重组。</span>`;
+            emotionText.style.borderColor = data.color;
+            emotionText.style.color = "white";
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            if(comp) {
+                comp.uniforms.u_seed.value = Math.random() * 100.0; 
+                comp.targetColor.set(data.color); comp.uniforms.u_petals.value = data.petals; comp.targetThickness = data.thickness; comp.targetDistortion = data.distortion; comp.targetZoom = 2.5;
+            }
+            subtitleTimers.push(setTimeout(() => { bgmTotem.play().catch(e => console.log(e)); subtitleBox.innerText = "「 您可以選擇開啟微笑共鳴 」"; subtitleBox.style.opacity = 1; subtitleTimers.push(setTimeout(() => { subtitleBox.style.opacity = 0; }, 3000)); }, 3000));
+            actionPanel.style.display = 'flex'; document.getElementById('btn-continue').style.display = 'block'; document.getElementById('btn-save').style.display = 'block'; btnSaveImmersive.style.display = 'none'; btnReset.style.display = 'none';
+        }
+
+        document.getElementById('btn-continue').onclick = () => {
+            document.getElementById('btn-continue').style.display = 'none'; document.getElementById('btn-save').style.display = 'none'; btnReset.style.display = 'block'; btnSaveImmersive.style.display = 'block';
+            currentUIState = 'init'; emotionText.innerHTML = `✨ 鏡像互動已啟動 ✨<span class="sub-desc">微笑會改變鏡像形態</span>`; emotionText.style.borderColor = "#fff";
+            bgmCapture.pause(); bgmTotem.pause(); bgmImmersive.currentTime = 0; bgmImmersive.play().catch(e=>console.log(e));
+            
+            setTimeout(() => { 
+                const audioInt = document.getElementById('audio-interaction');
+                if(audioInt) audioInt.play().catch(e => console.log(e)); 
+            }, 2000);
+
+            const comp = galaxy.components['hd-kaleidoscope-sky']; comp.targetZoom = 1.2; isInteracting = true;
+
+            async function interactionLoop() {
+                if(!isInteracting) return;
+                const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+                if (det) {
+                    const rawSmile = det.expressions.happy; 
+                    const topEmo = Object.keys(det.expressions).reduce((a,b)=>det.expressions[a]>det.expressions[b]?a:b); 
+                    const mappedEmo = plutchikMap[topEmo] || plutchikMap.neutral;
+                    
+                    if(comp) { comp.targetColor.set(mappedEmo.color); comp.targetThickness = mappedEmo.thickness; comp.targetDistortion = mappedEmo.distortion; }
+                    bufferedSmileTracker = rawSmile > 0.5 ? 1.0 : Math.max(0.0, bufferedSmileTracker - 0.05);
+
+                    if (rawSmile > 0.5) {
+                        if (uiState !== 'smile') {
+                            emotionText.innerHTML = `鏡像生成中 (已识别微笑)`; emotionText.style.color = "#E3B448";
+                            uiLayer.classList.add('smile-detected'); uiState = 'smile';
+                        }
+                    } else {
+                        if (uiState !== 'nosmile') {
+                            emotionText.innerHTML = `鏡像靜置中 (未识别微笑)<span class="sub-desc">微笑會改變鏡像形態</span>`;
+                            emotionText.style.color = "#ffffff";
+                            uiLayer.classList.remove('smile-detected'); uiState = 'nosmile';
+                        }
+                    }
+                }
+                if(comp) comp.targetSmile = bufferedSmileTracker;
+                if(isInteracting) setTimeout(interactionLoop, 100);
+            }
+            interactionLoop();
+        };
+
+        function captureHighResScreenshot(fileNamePrefix) {
+            const sceneEl = document.querySelector('a-scene'); const screenshotCanvas = sceneEl.components.screenshot.getCanvas('perspective');
+            const finalCanvas = document.createElement('canvas'); finalCanvas.width = screenshotCanvas.width; finalCanvas.height = screenshotCanvas.height;
+            const ctx = finalCanvas.getContext('2d'); ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height); ctx.drawImage(screenshotCanvas, 0, 0);
+            const link = document.createElement('a'); link.download = `${fileNamePrefix}_${new Date().getTime()}.jpg`; link.href = finalCanvas.toDataURL("image/jpeg", 0.95); link.click();
+        }
+
+        document.getElementById('btn-save').onclick = () => captureHighResScreenshot('Emotion_Totem');
+        btnSaveImmersive.onclick = () => captureHighResScreenshot('Resonance_Moment');
+
+        function resetApp() {
+            isCapturing = false; isInteracting = false; subtitleTimers.forEach(t => clearTimeout(t));
+            bgmCapture.pause(); bgmCapture.currentTime = 0; bgmTotem.pause(); bgmTotem.currentTime = 0; bgmImmersive.pause(); bgmImmersive.currentTime = 0;
+            
+            const audioRec = document.getElementById('audio-recognition');
+            if(audioRec) { audioRec.pause(); audioRec.currentTime = 0; }
+            const audioInt = document.getElementById('audio-interaction');
+            if(audioInt) { audioInt.pause(); audioInt.currentTime = 0; }
+
+            uiLayer.style.opacity = '0';
+            setTimeout(() => { 
+                uiLayer.style.display = 'none'; 
+                actionPanel.style.display = 'none'; 
+                subtitleBox.style.opacity = 0;
+                startBtn.style.display = 'block';
+                setTimeout(() => { startBtn.style.opacity = '1'; }, 50);
+            }, 800);
+           
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            if(comp) {
+                comp.isAnimating = true; comp.timeScale = 0.15; comp.uniforms.u_time.value = 0;
+                comp.uniforms.u_seed.value = Math.random() * 100.0; 
+                comp.targetColor.set('#9CBB89'); comp.targetThickness = 0.012; comp.targetDistortion = 1.2;
+                comp.targetSmile = 0; comp.uniforms.u_smile.value = 0; comp.targetZoom = 2.2;
+            }
+            bufferedSmileTracker = 0.0; currentUIState = ''; uiState = 'normal'; timerBox.innerText = '8';
+            uiLayer.classList.remove('smile-detected');
+            emotionText.innerText = "等待面部接入..."; emotionText.style.color = "white"; emotionText.style.borderColor = "rgba(255,255,255,0.2)"; emotionText.style.background = "rgba(255,255,255,0.05)";
+        }
+    </script>
+</body>
+</html>

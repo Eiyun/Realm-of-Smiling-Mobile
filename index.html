@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 冥想：多彩共鸣音效版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
+        #ui-layer { position: absolute; z-index: 100; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 15px; color: white; width: 180px; text-align: center; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); }
+        video#webcam { width: 100%; border-radius: 10px; transform: scaleX(-1); border: 1px solid #444; }
+        #timer-box { font-size: 40px; font-weight: bold; color: #00ffcc; margin: 10px 0; }
+        #start-btn { position: absolute; z-index: 200; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 40px; font-size: 20px; background: #00ffcc; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px #00ffcc; font-weight: bold; }
+        #instruction { font-size: 14px; color: #ccc; }
+    </style>
+</head>
+<body>
+
+    <button id="start-btn">开启冥想空间</button>
+
+    <div id="ui-layer" style="display: none;">
+        <video id="webcam" autoplay muted playsinline></video>
+        <div id="instruction">准备中...</div>
+        <div id="timer-box">10</div>
+        <div id="status-text" style="font-size: 12px; color: #888; margin-top:10px;">模型加载中...</div>
+    </div>
+
+    <a-scene background="color: #000">
+        <a-entity id="galaxy" starfield-logic></a-entity>
+        <a-camera position="0 1.6 0"></a-camera>
+    </a-scene>
+
+    <script>
+        // --- 1. 星空粒子逻辑 (支持多彩平滑过渡) ---
+        AFRAME.registerComponent('starfield-logic', {
+            init: function () {
+                this.count = 15000;
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(this.count * 3);
+                const colors = new Float32Array(this.count * 3); // 实时渲染的颜色
+
+                this.baseColors = new Float32Array(this.count * 3); // 情绪基调纯色
+                this.smileColors = new Float32Array(this.count * 3); // 微笑时的多彩色
+
+                const tempColor = new THREE.Color();
+
+                for (let i = 0; i < this.count; i++) {
+                    const r = 30 + Math.random() * 470;
+                    const t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
+                    positions[i*3] = r * Math.sin(p) * Math.cos(t);
+                    positions[i*3+1] = r * Math.sin(p) * Math.sin(t);
+                    positions[i*3+2] = r * Math.cos(p);
+
+                    // 预生成微笑时的彩色（使用 HSL 确保颜色鲜艳）
+                    tempColor.setHSL(Math.random(), 1.0, 0.6);
+                    this.smileColors[i*3] = tempColor.r;
+                    this.smileColors[i*3+1] = tempColor.g;
+                    this.smileColors[i*3+2] = tempColor.b;
+
+                    // 默认基调色和初始颜色先设为灰色
+                    this.baseColors[i*3] = 0.5; this.baseColors[i*3+1] = 0.5; this.baseColors[i*3+2] = 0.5;
+                    colors[i*3] = 0.5; colors[i*3+1] = 0.5; colors[i*3+2] = 0.5;
+                }
+                
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+                // 核心修改：开启 vertexColors: true，让粒子读取自身的颜色属性
+                this.material = new THREE.PointsMaterial({ 
+                    size: 0.15, 
+                    transparent: true, 
+                    blending: THREE.AdditiveBlending, 
+                    opacity: 0.8,
+                    vertexColors: true 
+                });
+                this.el.setObject3D('mesh', new THREE.Points(geometry, this.material));
+                
+                this.speed = 0.1; this.targetSpeed = 0.1;
+                this.smileIntensity = 0; this.targetSmileIntensity = 0;
+            },
+            
+            // 外部调用：设定情绪基调色
+            setBaseColor: function(hexStr) {
+                const c = new THREE.Color(hexStr);
+                for(let i=0; i < this.count; i++) {
+                    this.baseColors[i*3] = c.r;
+                    this.baseColors[i*3+1] = c.g;
+                    this.baseColors[i*3+2] = c.b;
+                }
+            },
+
+            tick: function () {
+                const mesh = this.el.getObject3D('mesh');
+                const pos = mesh.geometry.attributes.position.array;
+                const cols = mesh.geometry.attributes.color.array;
+                
+                // 平滑插值速度和微笑强度
+                this.speed += (this.targetSpeed - this.speed) * 0.05;
+                this.smileIntensity += (this.targetSmileIntensity - this.smileIntensity) * 0.08;
+
+                for (let i = 0; i < this.count; i++) {
+                    const idx = i * 3;
+                    
+                    // 1. 位置穿梭逻辑
+                    const d = Math.sqrt(pos[idx]**2 + pos[idx+1]**2 + pos[idx+2]**2);
+                    const f = this.speed / d;
+                    pos[idx] += pos[idx]*f; pos[idx+1] += pos[idx+1]*f; pos[idx+2] += pos[idx+2]*f;
+                    if (d > 500) { pos[idx]/=15; pos[idx+1]/=15; pos[idx+2]/=15; }
+
+                    // 2. 颜色插值逻辑：根据微笑强度在【基调色】和【多彩色】之间平滑过渡
+                    cols[idx] = this.baseColors[idx] + (this.smileColors[idx] - this.baseColors[idx]) * this.smileIntensity;
+                    cols[idx+1] = this.baseColors[idx+1] + (this.smileColors[idx+1] - this.baseColors[idx+1]) * this.smileIntensity;
+                    cols[idx+2] = this.baseColors[idx+2] + (this.smileColors[idx+2] - this.baseColors[idx+2]) * this.smileIntensity;
+                }
+                
+                mesh.geometry.attributes.position.needsUpdate = true;
+                mesh.geometry.attributes.color.needsUpdate = true;
+            }
+        });
+
+        // --- 2. 自定义音频引擎 (保持不变) ---
+        class CustomAudioPlayer {
+            constructor() {
+                this.audioFiles = {
+                    happy: 'happy.mp3', sad: 'sad.mp3', angry: 'angry.mp3',
+                    fear: 'fear.mp3', surprised: 'surprised.mp3', disgusted: 'disgusted.mp3',
+                    sparkle: 'sparkle.mp3'
+                };
+                this.players = {}; this.currentBGM = null;
+            }
+            init() {
+                Object.keys(this.audioFiles).forEach(key => {
+                    const audio = new Audio(this.audioFiles[key]);
+                    audio.loop = (key !== 'sparkle'); audio.crossOrigin = "anonymous";
+                    this.players[key] = audio;
+                });
+            }
+            playBGM(emo) {
+                if (this.currentBGM) this.currentBGM.pause();
+                this.currentBGM = this.players[emo] || this.players['happy'];
+                this.currentBGM.volume = 0;
+                this.currentBGM.play().catch(e => console.log("播放失败:", e));
+                let vol = 0;
+                const fade = setInterval(() => {
+                    vol += 0.05; this.currentBGM.volume = vol;
+                    if (vol >= 0.5) clearInterval(fade);
+                }, 100);
+            }
+            updateSparkle(smileValue) {
+                const sparkle = this.players['sparkle'];
+                if (smileValue > 0.6 && sparkle.paused) {
+                    sparkle.volume = 0.3; sparkle.play();
+                }
+            }
+        }
+
+        // --- 3. 业务逻辑控制 ---
+        const audioSystem = new CustomAudioPlayer();
+        const startBtn = document.getElementById('start-btn');
+        const uiLayer = document.getElementById('ui-layer');
+        const timerBox = document.getElementById('timer-box');
+        const statusText = document.getElementById('status-text');
+        const galaxy = document.getElementById('galaxy');
+
+        const emoStyles = {
+            happy: '#FFD700', sad: '#00BFFF', angry: '#FF3300', 
+            fear: '#8000FF', surprised: '#FFFFFF', disgusted: '#446600', neutral: '#666'
+        };
+
+        startBtn.onclick = async () => {
+            startBtn.style.display = 'none';
+            uiLayer.style.display = 'block';
+            audioSystem.init();
+            initAI();
+        };
+
+        async function initAI() {
+            const video = document.getElementById('webcam');
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+
+            const URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+            await faceapi.nets.tinyFaceDetector.loadFromUri(URL);
+            await faceapi.nets.faceExpressionNet.loadFromUri(URL);
+
+            statusText.innerText = "✅ 模型就绪";
+            runPhaseOne();
+        }
+
+        function runPhaseOne() {
+            let count = 10;
+            let samples = [];
+            const video = document.getElementById('webcam');
+
+            let timer = setInterval(async () => {
+                count--;
+                timerBox.innerText = count;
+                const det = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+                if(det.length > 0) samples.push(Object.keys(det[0].expressions).reduce((a,b)=>det[0].expressions[a]>det[0].expressions[b]?a:b));
+
+                if(count <= 0) {
+                    clearInterval(timer);
+                    const finalEmo = samples.sort((a,b)=>samples.filter(v=>v===a).length-samples.filter(v=>v===b).length).pop() || 'neutral';
+                    
+                    // 1. 调用新方法：改变粒子基调色
+                    const colorStr = emoStyles[finalEmo];
+                    galaxy.components['starfield-logic'].setBaseColor(colorStr);
+                    
+                    // 2. 播放对应背景音乐
+                    audioSystem.playBGM(finalEmo);
+                    
+                    // 3. 进入无限交互模式
+                    startInteraction();
+                }
+            }, 1000);
+        }
+
+        function startInteraction() {
+            const video = document.getElementById('webcam');
+            setInterval(async () => {
+                const det = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
+                const sVal = (det.length > 0) ? det[0].expressions.happy : 0;
+                
+                const starLogic = galaxy.components['starfield-logic'];
+                
+                // 视觉穿梭速度加快
+                starLogic.targetSpeed = 0.1 + (sVal * 5);
+                
+                // 核心控制：根据微笑程度控制色彩鲜艳度 (加了一点缓冲阈值)
+                starLogic.targetSmileIntensity = sVal > 0.3 ? sVal : 0;
+                
+                // 音效交互
+                audioSystem.updateSparkle(sVal);
+                
+                statusText.innerText = sVal > 0.5 ? "✨ 多彩共鸣中 ✨" : "静候微笑...";
+            }, 200);
+        }
+    </script>
+</body>
+</html>
