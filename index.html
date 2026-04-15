@@ -2,238 +2,361 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>AI 冥想：多彩共鸣音效版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>微笑之境</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.4.2/aframe.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
-        #ui-layer { position: absolute; z-index: 100; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 15px; color: white; width: 180px; text-align: center; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); }
-        video#webcam { width: 100%; border-radius: 10px; transform: scaleX(-1); border: 1px solid #444; }
-        #timer-box { font-size: 40px; font-weight: bold; color: #00ffcc; margin: 10px 0; }
-        #start-btn { position: absolute; z-index: 200; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 40px; font-size: 20px; background: #00ffcc; border: none; border-radius: 50px; cursor: pointer; box-shadow: 0 0 20px #00ffcc; font-weight: bold; }
-        #instruction { font-size: 14px; color: #ccc; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+        
+        #ui-layer {
+            position: absolute; z-index: 100; top: 20px; left: 20px;
+            background: rgba(255, 255, 255, 0); padding: 18px; border-radius: 16px;
+            color: white; width: 280px; text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            box-sizing: border-box;
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        
+        .video-wrapper { position: relative; width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid rgba(255,255,255,0.2); background: #000; aspect-ratio: 4/3; margin-bottom: 12px; }
+        video#webcam { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); opacity: 0; z-index: 5; }
+        canvas#landmarks { position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform: scaleX(-1); z-index: 10; background: #000; }
+        
+        #realtime-emotion {
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white; padding: 12px; border-radius: 8px; font-weight: 300; font-size: 14px; margin-bottom: 12px; transition: all 0.5s; line-height: 1.5;
+        }
+        .sub-desc { font-size: 11px; font-weight: normal; color: rgba(255,255,255,0.7); display: block; margin-top: 4px; }
+        .big-text { font-size: 38px; font-weight: 300; color: #fff; margin: 10px 0; text-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        
+        .btn {
+            padding: 14px 22px; font-size: 14px; margin: 6px 0; border: none; border-radius: 30px; cursor: pointer; font-weight: 300; transition: all 0.3s ease; width: 100%; box-sizing: border-box;
+            background: rgba(255, 255, 255, 0.1); color: white;
+            backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.15); letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .btn:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+        
+        #center-start { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; font-size: 20px; padding: 20px 40px; width: auto; background: rgba(255, 255, 255, 0); border-color: rgba(255, 255, 255, 0); backdrop-filter: blur(10px); color: #ffffff; white-space: nowrap; transition: opacity 1s ease; }
+        #action-panel { display: none; margin-top: 15px; flex-direction: column; align-items: center; width: 100%;}
+        #subtitle-box { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 150; color: rgba(255, 255, 255, 0.9); font-size: 24px; letter-spacing: 4px; text-shadow: 0 0 15px rgba(255, 255, 255, 0.6); opacity: 0; transition: opacity 1.5s ease-in-out; pointer-events: none; text-align: center; font-weight: 300; width: 90%; }
+        
+        .smile-detected { border-color: rgba(227, 180, 72, 0.6) !important; background: rgba(227, 180, 72, 0.1) !important; }
+
+        /* 优化2：移动端专属响应式布局 */
+        @media (max-width: 768px) {
+            #ui-layer {
+                /* 取消顶部定位，移至底部居中 */
+                top: auto;
+                bottom: max(20px, env(safe-area-inset-bottom));
+                left: 50%;
+                transform: translateX(-50%);
+                width: 92%;
+                max-width: 400px;
+                padding: 16px;
+            }
+            .video-wrapper {
+                margin-bottom: 8px; /* 紧凑一点 */
+            }
+            #center-start {
+                font-size: 18px;
+                padding: 16px 32px;
+            }
+            #subtitle-box {
+                font-size: 16px;
+                letter-spacing: 2px;
+                top: 35%; /* 字幕稍微上移，避免被底部的控制面板遮挡 */
+            }
+            .big-text { font-size: 32px; margin: 6px 0; }
+            .btn { padding: 12px 20px; font-size: 14px; }
+            #realtime-emotion { padding: 10px; font-size: 13px; margin-bottom: 10px; }
+        }
     </style>
 </head>
 <body>
 
-    <button id="start-btn">开启冥想空间</button>
+    <button id="center-start" class="btn">開啟微笑之境</button>
+    <div id="subtitle-box"></div>
 
-    <div id="ui-layer" style="display: none;">
-        <video id="webcam" autoplay muted playsinline></video>
-        <div id="instruction">准备中...</div>
-        <div id="timer-box">10</div>
-        <div id="status-text" style="font-size: 12px; color: #888; margin-top:10px;">模型加载中...</div>
+    <div id="ui-layer" style="display: none; opacity: 0;">
+        <div class="video-wrapper">
+            <video id="webcam" autoplay muted playsinline></video>
+            <canvas id="landmarks"></canvas>
+        </div>
+        <div id="realtime-emotion">等待面部識別</div>
+        <div id="stage-info" style="font-size: 12px; color: rgba(255,255,255,0.7); display:none;">面部數據采集中</div>
+        <div id="timer-box" class="big-text" style="display:none;">8</div>
+        <div id="action-panel">
+            <button id="btn-save" class="btn">保存我的情緒狀態</button>
+            <button id="btn-continue" class="btn">開啟微笑之境</button>
+            <button id="btn-save-immersive" class="btn" style="display:none;">保存我的微笑瞬间</button>
+            <button id="btn-reset" class="btn" style="display:none;">返回首頁</button>
+        </div>
     </div>
 
-    <a-scene background="color: #000">
-        <a-entity id="galaxy" starfield-logic></a-entity>
-        <a-camera position="0 1.6 0"></a-camera>
+    <audio id="bgm-capture" crossorigin="anonymous"><source src="Navigation Voice 1.MP3" type="audio/mpeg"></audio>
+    <audio id="bgm-totem" crossorigin="anonymous"><source src="immersive_music.mp3" type="audio/mpeg"></audio>
+    <audio id="bgm-immersive" loop crossorigin="anonymous"><source src="Navigation Voice 2.MP3" type="audio/mpeg"></audio>
+
+    <a-scene renderer="preserveDrawingBuffer: true; antialias: true">
+        <a-sky id="galaxy" radius="50" hd-kaleidoscope-sky visible="true" rotation="0 -90 0"></a-sky>
+        <a-camera position="0 0 0" look-controls="pointerLockEnabled: false"></a-camera>
     </a-scene>
 
     <script>
-        // --- 1. 星空粒子逻辑 (支持多彩平滑过渡) ---
-        AFRAME.registerComponent('starfield-logic', {
+        AFRAME.registerComponent('hd-kaleidoscope-sky', {
             init: function () {
-                this.count = 15000;
-                const geometry = new THREE.BufferGeometry();
-                const positions = new Float32Array(this.count * 3);
-                const colors = new Float32Array(this.count * 3); // 实时渲染的颜色
-
-                this.baseColors = new Float32Array(this.count * 3); // 情绪基调纯色
-                this.smileColors = new Float32Array(this.count * 3); // 微笑时的多彩色
-
-                const tempColor = new THREE.Color();
-
-                for (let i = 0; i < this.count; i++) {
-                    const r = 30 + Math.random() * 470;
-                    const t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
-                    positions[i*3] = r * Math.sin(p) * Math.cos(t);
-                    positions[i*3+1] = r * Math.sin(p) * Math.sin(t);
-                    positions[i*3+2] = r * Math.cos(p);
-
-                    // 预生成微笑时的彩色（使用 HSL 确保颜色鲜艳）
-                    tempColor.setHSL(Math.random(), 1.0, 0.6);
-                    this.smileColors[i*3] = tempColor.r;
-                    this.smileColors[i*3+1] = tempColor.g;
-                    this.smileColors[i*3+2] = tempColor.b;
-
-                    // 默认基调色和初始颜色先设为灰色
-                    this.baseColors[i*3] = 0.5; this.baseColors[i*3+1] = 0.5; this.baseColors[i*3+2] = 0.5;
-                    colors[i*3] = 0.5; colors[i*3+1] = 0.5; colors[i*3+2] = 0.5;
-                }
+                this.targetColor = new THREE.Color(0x9CBB89);
+                this.targetThickness = 0.012;  
+                this.targetDistortion = 1.2;  
+                this.currentZoom = 2.2; 
                 
-                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                this.uniforms = {
+                    u_time: { value: 0.0 }, u_color: { value: new THREE.Color(0x9CBB89) },
+                    u_smile: { value: 0.0 }, u_zoom: { value: 2.2 }, 
+                    u_petals: { value: 14.0 }, u_seed: { value: Math.random() * 100.0 },
+                    u_thickness: { value: 0.012 }, u_distortion: { value: 1.2 }
+                };
 
-                // 核心修改：开启 vertexColors: true，让粒子读取自身的颜色属性
-                this.material = new THREE.PointsMaterial({ 
-                    size: 0.15, 
-                    transparent: true, 
-                    blending: THREE.AdditiveBlending, 
-                    opacity: 0.8,
-                    vertexColors: true 
-                });
-                this.el.setObject3D('mesh', new THREE.Points(geometry, this.material));
-                
-                this.speed = 0.1; this.targetSpeed = 0.1;
-                this.smileIntensity = 0; this.targetSmileIntensity = 0;
+                const vertexShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+                const fragmentShader = `
+                    varying vec2 vUv; uniform float u_time; uniform vec3 u_color; uniform float u_smile;
+                    uniform float u_zoom; uniform float u_petals; uniform float u_seed; uniform float u_thickness; uniform float u_distortion;
+                    #define PI 3.14159265359
+                    void main() {
+                        vec2 original_uv = (vUv - 0.5) * 2.0; float original_r = length(original_uv); 
+                        vec2 uv = original_uv * u_zoom;
+                        float thump = 1.0 - u_smile * 0.03 * sin(u_time * 5.0); uv *= thump;
+                        float r = length(uv); float a = atan(uv.y, uv.x); a += u_seed * 0.1;
+                        float slice = PI * 2.0 / u_petals; a = mod(a, slice); a = abs(a - slice / 2.0);
+                        vec2 p = r * vec2(cos(a), sin(a)); 
+                        float scale = 3.5 - u_smile * 1.8; p *= scale;
+                        vec2 flow = p;
+                        for(float i = 1.0; i < 20.0; i++) {
+                            float speedFactor = 0.6 + i * 0.03;
+                            float t = u_time * (1.0 + u_smile * 0.3);
+                            flow.x += 0.3 / i * sin(i * (u_distortion + 4.0 + sin(u_time * 0.1)) * flow.y + t * speedFactor + u_seed * i);
+                            flow.y += 0.3 / i * cos(i * (u_distortion + cos(u_time * 1.0)) * flow.x + t * speedFactor + u_seed * i);
+                            float angle = u_time * 0.01 * u_smile; flow = mat2(cos(angle), -sin(angle), sin(angle), cos(angle)) * flow;
+                        }
+                        float pattern = cos(flow.x * 5.0 + flow.y * 5.0);
+                        float thickness = mix(u_thickness, u_thickness * 1.6, u_smile);
+                        float glow = thickness / abs(pattern + 0.006); 
+                        vec3 liuliSpectrum = 0.5 + 0.5 * cos(u_time * 0.4 + r * 3.0 + flow.x * 0.2 + vec3(0.0, 1.0, 2.0));
+                        vec3 finalColor = mix(u_color, liuliSpectrum, u_smile * 0.85);
+                        vec3 col = finalColor * glow * (2.2 + u_smile * 3.0) + vec3(1.0) * pow(glow, 2.0) * 0.6 * u_smile;
+                        col *= smoothstep(mix(1.5, 0.6, (u_zoom - 1.0)/2.5), mix(1.5, 0.6, (u_zoom - 1.0)/2.5) - 0.2, original_r); 
+                        gl_FragColor = vec4(col, 1.0);
+                    }
+                `;
+                this.material = new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
+                this.el.getObject3D('mesh').material = this.material;
+                this.isAnimating = true; this.timeScale = 0.15; this.targetSmile = 0.0; 
             },
-            
-            // 外部调用：设定情绪基调色
-            setBaseColor: function(hexStr) {
-                const c = new THREE.Color(hexStr);
-                for(let i=0; i < this.count; i++) {
-                    this.baseColors[i*3] = c.r;
-                    this.baseColors[i*3+1] = c.g;
-                    this.baseColors[i*3+2] = c.b;
+            tick: function (time, dt) {
+                if (!this.isAnimating) return;
+                const delta = (dt / 1000);
+                this.uniforms.u_time.value += delta * this.timeScale;
+                const currentSmile = this.uniforms.u_smile.value;
+                this.uniforms.u_smile.value += (this.targetSmile - currentSmile) * delta * (this.targetSmile > currentSmile ? 1.5 : 0.6);
+                if (this.targetSmile > 0.5) {
+                    this.currentZoom -= delta * 0.035; 
+                } else {
+                    this.currentZoom += (2.2 - this.currentZoom) * delta * 0.3; 
                 }
-            },
-
-            tick: function () {
-                const mesh = this.el.getObject3D('mesh');
-                const pos = mesh.geometry.attributes.position.array;
-                const cols = mesh.geometry.attributes.color.array;
-                
-                // 平滑插值速度和微笑强度
-                this.speed += (this.targetSpeed - this.speed) * 0.05;
-                this.smileIntensity += (this.targetSmileIntensity - this.smileIntensity) * 0.08;
-
-                for (let i = 0; i < this.count; i++) {
-                    const idx = i * 3;
-                    
-                    // 1. 位置穿梭逻辑
-                    const d = Math.sqrt(pos[idx]**2 + pos[idx+1]**2 + pos[idx+2]**2);
-                    const f = this.speed / d;
-                    pos[idx] += pos[idx]*f; pos[idx+1] += pos[idx+1]*f; pos[idx+2] += pos[idx+2]*f;
-                    if (d > 500) { pos[idx]/=15; pos[idx+1]/=15; pos[idx+2]/=15; }
-
-                    // 2. 颜色插值逻辑：根据微笑强度在【基调色】和【多彩色】之间平滑过渡
-                    cols[idx] = this.baseColors[idx] + (this.smileColors[idx] - this.baseColors[idx]) * this.smileIntensity;
-                    cols[idx+1] = this.baseColors[idx+1] + (this.smileColors[idx+1] - this.baseColors[idx+1]) * this.smileIntensity;
-                    cols[idx+2] = this.baseColors[idx+2] + (this.smileColors[idx+2] - this.baseColors[idx+2]) * this.smileIntensity;
-                }
-                
-                mesh.geometry.attributes.position.needsUpdate = true;
-                mesh.geometry.attributes.color.needsUpdate = true;
+                this.uniforms.u_zoom.value = Math.max(0.7, this.currentZoom);
+                this.uniforms.u_color.value.lerp(this.targetColor, delta * 1.5);
+                this.uniforms.u_thickness.value += (this.targetThickness - this.uniforms.u_thickness.value) * delta * 1.5;
+                this.uniforms.u_distortion.value += (this.targetDistortion - this.uniforms.u_distortion.value) * delta * 1.5;
             }
         });
 
-        // --- 2. 自定义音频引擎 (保持不变) ---
-        class CustomAudioPlayer {
-            constructor() {
-                this.audioFiles = {
-                    happy: 'happy.mp3', sad: 'sad.mp3', angry: 'angry.mp3',
-                    fear: 'fear.mp3', surprised: 'surprised.mp3', disgusted: 'disgusted.mp3',
-                    sparkle: 'sparkle.mp3'
-                };
-                this.players = {}; this.currentBGM = null;
-            }
-            init() {
-                Object.keys(this.audioFiles).forEach(key => {
-                    const audio = new Audio(this.audioFiles[key]);
-                    audio.loop = (key !== 'sparkle'); audio.crossOrigin = "anonymous";
-                    this.players[key] = audio;
-                });
-            }
-            playBGM(emo) {
-                if (this.currentBGM) this.currentBGM.pause();
-                this.currentBGM = this.players[emo] || this.players['happy'];
-                this.currentBGM.volume = 0;
-                this.currentBGM.play().catch(e => console.log("播放失败:", e));
-                let vol = 0;
-                const fade = setInterval(() => {
-                    vol += 0.05; this.currentBGM.volume = vol;
-                    if (vol >= 0.5) clearInterval(fade);
-                }, 100);
-            }
-            updateSparkle(smileValue) {
-                const sparkle = this.players['sparkle'];
-                if (smileValue > 0.6 && sparkle.paused) {
-                    sparkle.volume = 0.3; sparkle.play();
-                }
-            }
-        }
+        const plutchikMap = {
+            happy: { color: '#E3B448', petals: 16, thickness: 0.025, distortion: 1.0, name: '喜悅' }, 
+            sad: { color: '#2A5CAA', petals: 8,  thickness: 0.006, distortion: 0.4, name: '悲傷' }, 
+            angry: { color: '#FF461F', petals: 24, thickness: 0.015, distortion: 3.5, name: '憤怒' }, 
+            fearful: { color: '#1D6953', petals: 10, thickness: 0.005, distortion: 4.5, name: '恐懼' }, 
+            surprised: { color: '#4CB4E7', petals: 18, thickness: 0.018, distortion: 2.0, name: '驚奇' }, 
+            disgusted: { color: '#6B4C9A', petals: 12, thickness: 0.012, distortion: 2.5, name: '厭惡' }, 
+            neutral: { color: '#9CBB89', petals: 14, thickness: 0.012, distortion: 1.2, name: '平靜' }  
+        };
 
-        // --- 3. 业务逻辑控制 ---
-        const audioSystem = new CustomAudioPlayer();
-        const startBtn = document.getElementById('start-btn');
+        const startBtn = document.getElementById('center-start');
         const uiLayer = document.getElementById('ui-layer');
         const timerBox = document.getElementById('timer-box');
-        const statusText = document.getElementById('status-text');
+        const emotionText = document.getElementById('realtime-emotion');
         const galaxy = document.getElementById('galaxy');
+        const subtitleBox = document.getElementById('subtitle-box');
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('landmarks');
+        const bgmCapture = document.getElementById('bgm-capture');
+        const bgmTotem = document.getElementById('bgm-totem');
+        const bgmImmersive = document.getElementById('bgm-immersive');
 
-        const emoStyles = {
-            happy: '#FFD700', sad: '#00BFFF', angry: '#FF3300', 
-            fear: '#8000FF', surprised: '#FFFFFF', disgusted: '#446600', neutral: '#666'
-        };
+        let isCapturing = false, isInteracting = false, uiState = 'normal', bufferedSmileTracker = 0.0, collectedSamples = [];
 
         startBtn.onclick = async () => {
-            startBtn.style.display = 'none';
+            startBtn.style.opacity = '0';
+            setTimeout(() => { startBtn.style.display = 'none'; }, 1000);
             uiLayer.style.display = 'block';
-            audioSystem.init();
-            initAI();
+            setTimeout(() => { uiLayer.style.opacity = '1'; }, 100);
+            bgmCapture.play().catch(e => console.log(e));
+            await initFaceAPI();
         };
 
-        async function initAI() {
-            const video = document.getElementById('webcam');
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-            video.srcObject = stream;
-
-            const URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-            await faceapi.nets.tinyFaceDetector.loadFromUri(URL);
-            await faceapi.nets.faceExpressionNet.loadFromUri(URL);
-
-            statusText.innerText = "✅ 模型就绪";
-            runPhaseOne();
+        async function initFaceAPI() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+                video.srcObject = stream;
+                await new Promise((resolve) => { video.onloadedmetadata = () => { video.play().then(resolve); }; });
+                const URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
+                
+                await Promise.all([
+                    faceapi.nets.tinyFaceDetector.loadFromUri(URL), 
+                    faceapi.nets.faceExpressionNet.loadFromUri(URL), 
+                    faceapi.nets.faceLandmark68Net.loadFromUri(URL)
+                ]);
+                const displaySize = { width: video.videoWidth, height: video.videoHeight };
+                faceapi.matchDimensions(canvas, displaySize);
+                startPhase1(displaySize);
+            } catch (e) { emotionText.innerText = "❌ 攝像頭啟動失敗"; }
         }
 
-        function runPhaseOne() {
-            let count = 10;
-            let samples = [];
-            const video = document.getElementById('webcam');
+        function startPhase1(displaySize) {
+            document.getElementById('stage-info').style.display = "block"; timerBox.style.display = "block";
+            let count = 8; timerBox.innerText = count; isCapturing = true;
+            subtitleBox.innerText = "「 請使用您的面部表情，嘗試表達您當下的情緒狀態 」"; subtitleBox.style.opacity = 1;
+            setTimeout(() => { subtitleBox.style.opacity = 0; }, 4000);
 
-            let timer = setInterval(async () => {
-                count--;
-                timerBox.innerText = count;
-                const det = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-                if(det.length > 0) samples.push(Object.keys(det[0].expressions).reduce((a,b)=>det[0].expressions[a]>det[0].expressions[b]?a:b));
+            async function captureLoop() {
+                if(!isCapturing) return;
+                
+                const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                                    .withFaceLandmarks()
+                                    .withFaceExpressions();
+                
+                const ctx = canvas.getContext('2d'); 
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
 
-                if(count <= 0) {
-                    clearInterval(timer);
-                    const finalEmo = samples.sort((a,b)=>samples.filter(v=>v===a).length-samples.filter(v=>v===b).length).pop() || 'neutral';
+                if(det) {
+                    const resizedDet = faceapi.resizeResults(det, displaySize);
+                    const topEmo = Object.keys(det.expressions).reduce((a,b)=>det.expressions[a]>det.expressions[b]?a:b);
+                    const emoData = plutchikMap[topEmo] || plutchikMap.neutral;
                     
-                    // 1. 调用新方法：改变粒子基调色
-                    const colorStr = emoStyles[finalEmo];
-                    galaxy.components['starfield-logic'].setBaseColor(colorStr);
                     
-                    // 2. 播放对应背景音乐
-                    audioSystem.playBGM(finalEmo);
+                    faceapi.draw.drawFaceLandmarks(canvas, resizedDet, { 
+                        drawLines: true, 
+                        color: emoData.color, 
+                        lineWidth: 1 
+                    });
                     
-                    // 3. 进入无限交互模式
-                    startInteraction();
+                    if (count <= 3) {
+                        emotionText.innerText = `正在凝結心境: ${emoData.name}`; 
+                        emotionText.style.color = emoData.color;
+                        collectedSamples.push(topEmo); 
+                    } else {
+                        emotionText.innerText = `正在識別情緒: ${emoData.name}`; 
+                        emotionText.style.color = "#ffffff";
+                    }
+                }
+                if(isCapturing) setTimeout(captureLoop, 60); 
+            }
+            captureLoop();
+
+            let timer = setInterval(() => {
+                count--; timerBox.innerText = count;
+                if(count <= 0) { 
+                    clearInterval(timer); isCapturing = false; 
+                    const counts = {};
+                    collectedSamples.forEach(x => counts[x] = (counts[x] || 0) + 1);
+                    const finalEmotion = Object.keys(counts).length ? Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b) : 'neutral';
+                    startPhase2(finalEmotion); 
                 }
             }, 1000);
         }
 
-        function startInteraction() {
-            const video = document.getElementById('webcam');
-            setInterval(async () => {
-                const det = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
-                const sVal = (det.length > 0) ? det[0].expressions.happy : 0;
-                
-                const starLogic = galaxy.components['starfield-logic'];
-                
-                // 视觉穿梭速度加快
-                starLogic.targetSpeed = 0.1 + (sVal * 5);
-                
-                // 核心控制：根据微笑程度控制色彩鲜艳度 (加了一点缓冲阈值)
-                starLogic.targetSmileIntensity = sVal > 0.3 ? sVal : 0;
-                
-                // 音效交互
-                audioSystem.updateSparkle(sVal);
-                
-                statusText.innerText = sVal > 0.5 ? "✨ 多彩共鸣中 ✨" : "静候微笑...";
-            }, 200);
+        function startPhase2(emotionKey) {
+            timerBox.style.display = 'none'; document.getElementById('stage-info').style.display = 'none';
+            const data = plutchikMap[emotionKey] || plutchikMap.neutral;
+            emotionText.innerHTML = `基调：<span style="color:${data.color}">${data.name}</span><span class="sub-desc">專屬圖騰已凝結</span>`;
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            if(comp) {
+                comp.targetColor.set(data.color); comp.uniforms.u_petals.value = data.petals; comp.targetThickness = data.thickness; comp.targetDistortion = data.distortion;
+            }
+            bgmCapture.pause(); bgmTotem.play().catch(e => console.log(e));
+            setTimeout(() => {
+                subtitleBox.innerText = "「 您可以選擇保存您的情緒狀態或開始微笑之境 」";
+                subtitleBox.style.opacity = 1;
+                setTimeout(() => { subtitleBox.style.opacity = 0; }, 5000); 
+            }, 2500);
+            document.getElementById('action-panel').style.display = 'flex';
+        }
+
+        document.getElementById('btn-continue').onclick = () => {
+            document.getElementById('btn-continue').style.display = 'none'; document.getElementById('btn-save').style.display = 'none';
+            document.getElementById('btn-reset').style.display = 'block'; document.getElementById('btn-save-immersive').style.display = 'block';
+            emotionText.innerHTML = `✨ 微笑共鳴 ✨<span class="sub-desc">微笑將驅動鏡像的變化</span>`;
+            bgmTotem.pause(); bgmImmersive.play();
+            isInteracting = true;
+            interactionLoop();
+        };
+
+        async function interactionLoop() {
+            if(!isInteracting) return;
+            
+            const det = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
+                                .withFaceLandmarks()
+                                .withFaceExpressions();
+            const comp = galaxy.components['hd-kaleidoscope-sky'];
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (det) {
+                const resizedDet = faceapi.resizeResults(det, { width: video.videoWidth, height: video.videoHeight });
+                const topEmo = Object.keys(det.expressions).reduce((a,b)=>det.expressions[a]>det.expressions[b]?a:b);
+                const emoData = plutchikMap[topEmo] || plutchikMap.neutral;
+
+                faceapi.draw.drawFaceLandmarks(canvas, resizedDet, { 
+                    drawLines: true, 
+                    color: emoData.color, 
+                    lineWidth: 1 
+                });
+
+                const rawSmile = det.expressions.happy; 
+                if (rawSmile > 0.5) {
+                    bufferedSmileTracker = Math.min(1.0, bufferedSmileTracker + 0.04);
+                } else {
+                    bufferedSmileTracker = Math.max(0.0, bufferedSmileTracker - 0.01);
+                }
+                if (bufferedSmileTracker > 0.35) {
+                    if (uiState !== 'smile') {
+                        emotionText.innerHTML = `鏡像變換中...`; emotionText.style.color = "#E3B448";
+                        uiLayer.classList.add('smile-detected'); uiState = 'smile';
+                    }
+                } else {
+                    if (uiState !== 'nosmile') {
+                        emotionText.innerHTML = `鏡像靜置中<span class="sub-desc">微笑將驅動鏡像的變化</span>`;
+                        emotionText.style.color = "#ffffff";
+                        uiLayer.classList.remove('smile-detected'); uiState = 'nosmile';
+                    }
+                }
+            }
+            if(comp) comp.targetSmile = bufferedSmileTracker;
+            setTimeout(interactionLoop, 60);
+        }
+
+        document.getElementById('btn-reset').onclick = () => location.reload();
+        document.getElementById('btn-save').onclick = () => captureScreenshot('Totem');
+        document.getElementById('btn-save-immersive').onclick = () => captureScreenshot('Resonance');
+
+        function captureScreenshot(name) {
+            const sceneEl = document.querySelector('a-scene'); 
+            const canvas = sceneEl.components.screenshot.getCanvas('perspective');
+            const link = document.createElement('a'); link.download = `${name}.jpg`; link.href = canvas.toDataURL("image/jpeg", 0.95); link.click();
         }
     </script>
 </body>
